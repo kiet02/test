@@ -1,67 +1,67 @@
-import logo from './logo.svg';
+
 import './App.css';
 import { data } from './data';
-import { useState } from 'react';
-import { Bar } from 'react-chartjs-2';
-import { Chart as ChartJS } from 'chart.js/auto'
+import { useEffect, useState } from 'react';
+import { Bar, Pie } from 'react-chartjs-2';
+import { Chart as ChartJS, LineElement, PointElement, LinearScale, Title, Tooltip, Legend } from 'chart.js/auto'
 import  db from './firebase';
 import { getDatabase, ref, onValue } from "firebase/database";
 function App() {
-  let BC = [
-    {ngay:"20/10/2023",value:912},
-    {ngay:"21/10/2023",value:412},
-    {ngay:"22/10/2023",value:612},
-    {ngay:"23/10/2023",value:212},
-  ]
+ 
   let NT =[
-    {ngay:"20/10/2023",value:912},
-    {ngay:"21/10/2023",value:412},
-    {ngay:"22/10/2023",value:612},
-    {ngay:"23/10/2023",value:212},
+    {Nhiptim:92,Oxi:102},
   ]
-  const starCountRef = ref(db, 'bodem');
-onValue(starCountRef, (snapshot) => {
+
+  const [Bc,setBc] = useState([])
+  const [Nt,setNt] = useState([])
+
+
+ 
+  useEffect(()=>{
+    const Buocchan = ref(db, 'bodem/buocchan');
+onValue(Buocchan, (snapshot) => {
   const data = snapshot.val();
-  console.log(data.buocchan);
-  
-});
-  // setTimeout(() => {
-    
-  // }, 100);
-const [userData,setUserData] = useState({
-  labels: data.map((data)=>data.year),
-  datasets:[{
-    labels:"Users Gained",
-    data: data.map((data)=> data.userGain),
-    backgroundColor:["green","blue"]
-  }]
+  setBc(data)
 })
-console.log(BC);
+
+const Nhiptim = ref(db, 'bodem/Nhiptim');
+onValue(Nhiptim, (snapshot) => {
+  const data = snapshot.val();
+  setNt(data)
+})
+
+},[])
+console.log(Nt.value);
+
 const buocchan = {
-  labels: BC.map((data) =>data.ngay),
+  labels: Bc.map(e=>e.ngay),
   datasets:[{
     labels:"Users Gained",
-    data: BC.map((data)=>data.value),
+    data: Bc.map(e=>e.value),
     backgroundColor:["green","blue"]
   }]
 }
 const nhiptim = {
-  labels: NT.map((data) =>data.ngay),
+  labels: ['nhịp tim','nồng đọ oxi'],
   datasets:[{
     labels:"Users Gained",
-    data: NT.map((data)=>data.value),
-    backgroundColor:["green","blue"]
+    data: [Nt.value,Nt.O2],
+    backgroundColor:['red',
+        'blue',]
   }]
 }
 
 
   return (
-    <div className="App">
-      <div style={{width: 700,}}>
-      <Bar data={buocchan}/>
-      <Bar data={nhiptim}/>
+    <div className="App" style={{flex:1}} >
+      <div className='Buocchan' >
+    <Bar data={buocchan} />
+    </div>
+    <div className='Nhiptim'>
+    <Pie data={nhiptim}/>
 
-      </div>
+    </div>
+
     </div>
   );
 }
