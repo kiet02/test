@@ -40,7 +40,7 @@ export default function BezierCurveEditor() {
       }))
     );
   }, []);
-
+  const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
   const [nextCurveId, setNextCurveId] = useState(2);
   const [dragging, setDragging] = useState<{
     pointId: number;
@@ -67,7 +67,15 @@ export default function BezierCurveEditor() {
     const endY = nextPoint.y;
     return `M ${startX} ${startY} C ${cp1X} ${cp1Y}, ${cp2X} ${cp2Y}, ${endX} ${endY}`;
   };
-
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setBackgroundImage(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
   const handlePointerDown = (
     e: React.PointerEvent,
     pointId: number,
@@ -327,7 +335,9 @@ export default function BezierCurveEditor() {
       style={{
         width: "100vw",
         height: "100vh",
-        backgroundImage: "url('/background.jpg')",
+        backgroundImage: backgroundImage
+          ? `url(${backgroundImage})`
+          : undefined,
         backgroundSize: "cover",
         backgroundPosition: "center",
         position: "relative",
@@ -598,6 +608,28 @@ export default function BezierCurveEditor() {
         >
           🔄 Reset
         </button>
+        <label
+          style={{
+            padding: "12px 24px",
+            backgroundColor: "#2196F3",
+            color: "white",
+            border: "none",
+            borderRadius: 8,
+            cursor: "pointer",
+            fontSize: 14,
+            fontWeight: "bold",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
+            transition: "all 0.2s",
+          }}
+        >
+          🖼️ Chọn ảnh
+          <input
+            type="file"
+            accept="image/*"
+            style={{ display: "none" }}
+            onChange={handleFileChange}
+          />
+        </label>
       </div>
     </div>
   );
