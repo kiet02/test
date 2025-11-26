@@ -103,8 +103,8 @@ export default function BezierCurveEditor() {
     // don't start panning when starting to drag a point handle or already interacting
     if (dragging) return;
     const targetEl = (e.target as Element) || null;
-    // if the pointerdown occurred on a handle (or inside it), don't pan — let handle logic run
-    if (targetEl?.closest && targetEl.closest("[data-handle]")) return;
+    // if the pointerdown occurred on a handle (or inside it) or UI, don't pan — let the UI/handle logic run
+    if (targetEl?.closest && (targetEl.closest("[data-handle]") || targetEl.closest("[data-ui-speeddial]"))) return;
     try {
       (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
     } catch {}
@@ -425,7 +425,8 @@ export default function BezierCurveEditor() {
     <div
       style={{
         width: "100vw",
-        height: "100vh",
+        height: "100dvh",
+        minHeight: "100vh",
         backgroundImage: backgroundImage
           ? `url(${backgroundImage})`
           : undefined,
@@ -434,6 +435,7 @@ export default function BezierCurveEditor() {
         position: "relative",
         overflow: "hidden",
         cursor: dragging || panning ? "grabbing" : scale > 1 ? "grab" : "default",
+        paddingBottom: "env(safe-area-inset-bottom, 0px)",
         userSelect: "none",
         touchAction: "none",
       }}
@@ -465,7 +467,7 @@ export default function BezierCurveEditor() {
       <div
         style={{
           position: "absolute",
-          bottom: 20,
+          bottom: `calc(20px + env(safe-area-inset-bottom, 0px))`,
           right: 20,
           display: "flex",
           flexDirection: "column",
