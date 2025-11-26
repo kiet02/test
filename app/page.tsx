@@ -1,7 +1,7 @@
 /* eslint-disable react/no-unescaped-entities */
 "use client";
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 
 interface Point {
   id: number;
@@ -38,10 +38,15 @@ export default function BezierCurveEditor() {
     type: "main" | "left" | "right" | "top";
     startX: number;
     startY: number;
+    pointerId?: number;
   } | null>(null);
 
   const [hoveredCurveId, setHoveredCurveId] = useState<number | null>(null);
   const [deleteMode, setDeleteMode] = useState(false);
+
+  const tapTimers = useRef<Record<string, number | null>>({});
+  const lastTap = useRef<Record<string, number>>({});
+  const DOUBLE_TAP_MS = 300;
 
   const createBezierPath = (point: Point, nextPoint: Point) => {
     const startX = point.x;
@@ -56,22 +61,26 @@ export default function BezierCurveEditor() {
     return `M ${startX} ${startY} C ${cp1X} ${cp1Y}, ${cp2X} ${cp2Y}, ${endX} ${endY}`;
   };
 
-  const handleMouseDown = (
-    e: React.MouseEvent,
+  const handlePointerDown = (
+    e: React.PointerEvent,
     pointId: number,
     type: "main" | "left" | "right" | "top"
   ) => {
     e.preventDefault();
     e.stopPropagation();
+    try {
+      (e.target as Element).setPointerCapture?.(e.pointerId);
+    } catch {}
     setDragging({
       pointId,
       type,
       startX: e.clientX,
       startY: e.clientY,
+      pointerId: e.pointerId,
     });
   };
 
-  const handleMouseMove = (e: React.MouseEvent) => {
+  const handlePointerMove = (e: React.PointerEvent) => {
     if (!dragging) return;
 
     const deltaX = e.clientX - dragging.startX;
@@ -98,7 +107,19 @@ export default function BezierCurveEditor() {
     );
   };
 
-  const handleMouseUp = () => {
+  const handlePointerUp = (e?: React.PointerEvent | MouseEvent) => {
+    try {
+      if (
+        e &&
+        "pointerId" in e &&
+        (e as React.PointerEvent).pointerId != null
+      ) {
+        (e.target as Element).releasePointerCapture?.(
+          (e as React.PointerEvent).pointerId
+        );
+      }
+    } catch {}
+
     if (dragging && dragging.type === "top") {
       const point = points.find((p) => p.id === dragging.pointId);
       if (point) {
@@ -138,14 +159,14 @@ export default function BezierCurveEditor() {
         }
       }
     }
+
     setDragging(null);
   };
-
   const addNewCurve = () => {
     const newPoint: Point = {
       id: Math.max(...points.map((p) => p.id)) + 1,
-      x: 200 + Math.random() * 400,
-      y: 200 + Math.random() * 300,
+      x: window.innerWidth / 2,
+      y: window.innerHeight / 2,
       leftX: -80,
       leftY: -80,
       rightX: 80,
@@ -219,9 +240,8 @@ export default function BezierCurveEditor() {
     setNextCurveId(nextIdForCurve);
   };
 
-  // ===== Chuyển segment thành đường thẳng khi double click =====
+  // ===== Chuyển segment thành đường thẳng =====
   const straightenSegment = (startPointId: number, endPointId: number) => {
-    if (deleteMode) return; // không straight khi đang ở chế độ xóa
     const startPoint = points.find((p) => p.id === startPointId);
     const endPoint = points.find((p) => p.id === endPointId);
     if (!startPoint || !endPoint) return;
@@ -240,6 +260,55 @@ export default function BezierCurveEditor() {
     });
 
     setPoints(updatedPoints);
+  };
+
+  // Handle taps (single and double) on a segment (works on mobile & desktop)
+  const handleSegmentPointerUp = (
+    e: React.PointerEvent<SVGPathElement>,
+    startId: number,
+    endId: number
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const key = `${startId}-${endId}`;
+    const now = Date.now();
+
+    if (deleteMode) {
+      // immediate delete if in delete mode
+      deleteSegment(startId, endId);
+      // clear any pending tap timers for this segment
+      if (tapTimers.current[key]) {
+        window.clearTimeout(tapTimers.current[key]!);
+        tapTimers.current[key] = null;
+      }
+      lastTap.current[key] = 0;
+      return;
+    }
+
+    const previous = lastTap.current[key] || 0;
+    if (previous && now - previous < DOUBLE_TAP_MS) {
+      // double tap detected
+      if (tapTimers.current[key]) {
+        window.clearTimeout(tapTimers.current[key]!);
+        tapTimers.current[key] = null;
+      }
+      lastTap.current[key] = 0;
+      straightenSegment(startId, endId);
+      return;
+    }
+
+    // set last tap and schedule single-tap action after threshold
+    lastTap.current[key] = now;
+    if (tapTimers.current[key]) {
+      window.clearTimeout(tapTimers.current[key]!);
+    }
+    tapTimers.current[key] = window.setTimeout(() => {
+      // single tap action (straighten)
+      straightenSegment(startId, endId);
+      tapTimers.current[key] = null;
+      lastTap.current[key] = 0;
+    }, DOUBLE_TAP_MS);
   };
 
   const curves = points.reduce((acc, point) => {
@@ -269,10 +338,14 @@ export default function BezierCurveEditor() {
         overflow: "hidden",
         cursor: dragging ? "grabbing" : "default",
         userSelect: "none",
+        touchAction: "none",
       }}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+      onPointerLeave={handlePointerUp}
+      onMouseUp={handlePointerUp}
+      onMouseLeave={handlePointerUp}
     >
       <svg
         style={{
@@ -281,7 +354,7 @@ export default function BezierCurveEditor() {
           left: 0,
           width: "100%",
           height: "100%",
-          pointerEvents: "none",
+          pointerEvents: "auto",
         }}
       >
         {Object.entries(curves).map(([curveId, curvePoints]) => {
@@ -339,19 +412,20 @@ export default function BezierCurveEditor() {
                     <path
                       d={createBezierPath(point, nextPoint)}
                       stroke="transparent"
-                      strokeWidth="20"
+                      strokeWidth="30"
                       fill="none"
                       style={{
                         pointerEvents: "auto",
                         cursor: deleteMode ? "pointer" : "pointer",
                       }}
-                      onMouseEnter={() => setHoveredCurveId(point.curveId)}
-                      onMouseLeave={() => setHoveredCurveId(null)}
-                      onClick={() =>
-                        deleteMode && deleteSegment(point.id, nextPoint.id)
-                      }
-                      onDoubleClick={() =>
-                        !deleteMode && straightenSegment(point.id, nextPoint.id)
+                      onPointerEnter={() => setHoveredCurveId(point.curveId)}
+                      onPointerLeave={() => setHoveredCurveId(null)}
+                      onPointerUp={(e) =>
+                        handleSegmentPointerUp(
+                          e as React.PointerEvent<SVGPathElement>,
+                          point.id,
+                          nextPoint.id
+                        )
                       }
                     />
                     <path
@@ -397,8 +471,9 @@ export default function BezierCurveEditor() {
                 cursor: "grab",
                 border: "2px solid rgba(255,255,255,0.8)",
                 boxShadow: "0 0 8px rgba(255,235,59,0.6)",
+                touchAction: "none",
               }}
-              onMouseDown={(e) => handleMouseDown(e, point.id, "left")}
+              onPointerDown={(e) => handlePointerDown(e, point.id, "left")}
             />
             <div
               style={{
@@ -412,8 +487,9 @@ export default function BezierCurveEditor() {
                 cursor: "grab",
                 border: "2px solid rgba(255,255,255,0.8)",
                 boxShadow: "0 0 8px rgba(233,30,99,0.6)",
+                touchAction: "none",
               }}
-              onMouseDown={(e) => handleMouseDown(e, point.id, "right")}
+              onPointerDown={(e) => handlePointerDown(e, point.id, "right")}
             />
             {isLastInCurve && (
               <div
@@ -428,8 +504,9 @@ export default function BezierCurveEditor() {
                   cursor: "grab",
                   border: "2px solid rgba(255,255,255,0.9)",
                   boxShadow: "0 0 10px rgba(255,152,0,0.7)",
+                  touchAction: "none",
                 }}
-                onMouseDown={(e) => handleMouseDown(e, point.id, "top")}
+                onPointerDown={(e) => handlePointerDown(e, point.id, "top")}
               />
             )}
             <div
@@ -445,8 +522,9 @@ export default function BezierCurveEditor() {
                 cursor: "grab",
                 boxShadow: "0 0 12px rgba(255,255,255,0.6)",
                 transition: "transform 0.1s",
+                touchAction: "none",
               }}
-              onMouseDown={(e) => handleMouseDown(e, point.id, "main")}
+              onPointerDown={(e) => handlePointerDown(e, point.id, "main")}
             />
           </React.Fragment>
         );
