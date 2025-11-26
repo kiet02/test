@@ -442,10 +442,7 @@ export default function BezierCurveEditor() {
         width: "100vw",
         height: "100dvh",
         minHeight: "100vh",
-        backgroundImage: backgroundImage
-          ? `url(${backgroundImage})`
-          : undefined,
-        backgroundSize: "cover",
+       
         backgroundPosition: "center",
         position: "relative",
         overflow: "hidden",
@@ -467,6 +464,10 @@ export default function BezierCurveEditor() {
         style={{
           position: "absolute",
           inset: 0,
+           backgroundImage: backgroundImage
+          ? `url(${backgroundImage})`
+          : undefined,
+        backgroundSize: "cover",
           transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`,
           transformOrigin: "0 0",
           width: "200%",
@@ -493,24 +494,7 @@ export default function BezierCurveEditor() {
           gap: 10,
           alignItems: "flex-end",
         }}
-      >
-        <div
-          style={{
-            color: "white",
-            backgroundColor: "rgba(0,0,0,0.7)",
-            padding: "8px 12px",
-            borderRadius: 8,
-            fontFamily: "monospace",
-            fontSize: 13,
-            fontWeight: 600,
-            textAlign: "right",
-            minWidth: 140,
-          }}
-        >
-          <div>Số đường: {Object.keys(curves).length}</div>
-          <div>Tổng điểm: {points.length}</div>
-          <div>Độ dài: {totalLength.toFixed(2)}</div>
-        </div>
+      >     
       <SpeedDial
         deleteMode={deleteMode}
         setDeleteMode={setDeleteMode}
