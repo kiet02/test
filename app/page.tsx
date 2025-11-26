@@ -20,8 +20,8 @@ export default function BezierCurveEditor() {
   const [points, setPoints] = useState<Point[]>([
     {
       id: 1,
-      x: 400,
-      y: 400,
+      x: window.innerWidth / 2,
+      y: window.innerHeight / 2,
       leftX: -80,
       leftY: -80,
       rightX: 80,
