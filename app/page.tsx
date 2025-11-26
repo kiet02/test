@@ -1,7 +1,6 @@
-/* eslint-disable react/no-unescaped-entities */
 "use client";
 
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 interface Point {
   id: number;
@@ -20,8 +19,8 @@ export default function BezierCurveEditor() {
   const [points, setPoints] = useState<Point[]>([
     {
       id: 1,
-      x: window.innerWidth / 2,
-      y: window.innerHeight / 2,
+      x: 400, // default value
+      y: 400, // default value
       leftX: -80,
       leftY: -80,
       rightX: 80,
@@ -32,6 +31,16 @@ export default function BezierCurveEditor() {
     },
   ]);
 
+  useEffect(() => {
+    setPoints((prev) =>
+      prev.map((p) => ({
+        ...p,
+        x: window.innerWidth / 2,
+        y: window.innerHeight / 2,
+      }))
+    );
+  }, []);
+
   const [nextCurveId, setNextCurveId] = useState(2);
   const [dragging, setDragging] = useState<{
     pointId: number;
@@ -41,7 +50,6 @@ export default function BezierCurveEditor() {
     pointerId?: number;
   } | null>(null);
 
-  const [hoveredCurveId, setHoveredCurveId] = useState<number | null>(null);
   const [deleteMode, setDeleteMode] = useState(false);
 
   const tapTimers = useRef<Record<string, number | null>>({});
