@@ -29,8 +29,8 @@ export default function BezierCurveEditor() {
     setPoints((prev) =>
       prev.map((p) => ({
         ...p,
-        x: window.innerWidth / 2,
-        y: window.innerHeight / 2,
+        x: window.innerWidth,
+        y: window.innerHeight ,
       }))
     );
   }, []);
@@ -63,6 +63,21 @@ export default function BezierCurveEditor() {
     startPan: { x: number; y: number };
   }>({ active: false, initialDistance: 0, initialScale: 1, midScreenX: 0, midScreenY: 0, startPan: { x: 0, y: 0 } });
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const _initialCentered = useRef(false);
+
+  useEffect(() => {
+    if (_initialCentered.current) return;
+    const el = containerRef.current;
+    if (!el) return;
+
+    const innerFactor = 2; // inner element is 200% × 200%
+    const rect = el.getBoundingClientRect();
+    const desiredPanX = (rect.width - rect.width * innerFactor * scale) / (2 * scale);
+    const desiredPanY = (rect.height - rect.height * innerFactor * scale) / (2 * scale);
+
+    setPan({ x: desiredPanX, y: desiredPanY });
+    _initialCentered.current = true;
+  }, [scale]);
 
   const [deleteMode, setDeleteMode] = useState(false);
 
@@ -437,7 +452,8 @@ export default function BezierCurveEditor() {
         cursor: dragging || panning ? "grabbing" : scale > 1 ? "grab" : "default",
         paddingBottom: "env(safe-area-inset-bottom, 0px)",
         userSelect: "none",
-        touchAction: "none",
+        touchAction: "none", 
+        backgroundColor: "#222",
       }}
       ref={containerRef}
       onPointerDown={handleBackgroundPointerDown}
@@ -453,6 +469,9 @@ export default function BezierCurveEditor() {
           inset: 0,
           transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`,
           transformOrigin: "0 0",
+          width: "200%",
+          height: "200%",
+          backgroundColor: "black",
         }}
         onPointerDown={handleBackgroundPointerDown}
       >
@@ -467,7 +486,7 @@ export default function BezierCurveEditor() {
       <div
         style={{
           position: "absolute",
-          bottom: `calc(20px + env(safe-area-inset-bottom, 0px))`,
+          top: `calc(20px + env(safe-area-inset-top, 0px))`,
           right: 20,
           display: "flex",
           flexDirection: "column",
@@ -475,15 +494,29 @@ export default function BezierCurveEditor() {
           alignItems: "flex-end",
         }}
       >
+        <div
+          style={{
+            color: "white",
+            backgroundColor: "rgba(0,0,0,0.7)",
+            padding: "8px 12px",
+            borderRadius: 8,
+            fontFamily: "monospace",
+            fontSize: 13,
+            fontWeight: 600,
+            textAlign: "right",
+            minWidth: 140,
+          }}
+        >
+          <div>Số đường: {Object.keys(curves).length}</div>
+          <div>Tổng điểm: {points.length}</div>
+          <div>Độ dài: {totalLength.toFixed(2)}</div>
+        </div>
       <SpeedDial
         deleteMode={deleteMode}
         setDeleteMode={setDeleteMode}
         addNewCurve={addNewCurve}
         resetCanvas={resetCanvas}
         handleFileChange={handleFileChange}
-        curveCount={Object.keys(curves).length}
-        totalPoints={points.length}
-        totalLength={totalLength}
       />
       </div>
     </div>

@@ -15,9 +15,7 @@ type Props = {
   addNewCurve: () => void;
   resetCanvas: () => void;
   handleFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  curveCount: number;
-  totalPoints: number;
-  totalLength: number;
+  // kept minimal props — counts shown by page wrapper
 };
 
 export default function SpeedDial({
@@ -26,9 +24,6 @@ export default function SpeedDial({
   addNewCurve,
   resetCanvas,
   handleFileChange,
-  curveCount,
-  totalPoints,
-  totalLength,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
@@ -61,10 +56,59 @@ export default function SpeedDial({
   }, [open, focusedIndex]);
 
   return (
-    <div data-ui-speeddial style={{ position: "absolute", right: 20, bottom: 20, zIndex: 999 }}>  
+    <div data-ui-speeddial style={{ zIndex: 999 }}>  
       <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 10 }}>
+        {/* Floating info bubble / toggle first so actions will drop down beneath it */}
+        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+          <button
+            id="speeddial-toggle"
+            aria-haspopup="menu"
+            aria-controls="speeddial-actions"
+            aria-expanded={open}
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setOpen((s) => !s);
+                if (!open) setFocusedIndex(0);
+              }
+              if (e.key === 'Escape') setOpen(false);
+              if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && open) {
+                e.preventDefault();
+                const dir = e.key === 'ArrowDown' ? 1 : -1;
+                setFocusedIndex((i) => (i + dir + actions.length) % actions.length);
+              }
+            }}
+            onClick={() => {
+              setOpen((s) => !s);
+              if (!open) setFocusedIndex(0);
+            }}
+            aria-label={open ? "Đóng menu hành động" : "Mở menu hành động"}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 56,
+              height: 56,
+              borderRadius: 28,
+              background: "linear-gradient(135deg,#00bfa5,#1de9b6)",
+              color: "white",
+              fontSize: 22,
+              fontWeight: 800,
+              boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+              border: "2px solid rgba(255,255,255,0.14)",
+              cursor: "pointer",
+            }}
+          >
+            {open ? "×" : "☰"}
+          </button>
+
+          {/* hidden file input to open the file picker */}
+          <input ref={inputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleFileChange} />
+        </div>
+
         {open && (
-          <div id="speeddial-actions" role="menu" aria-hidden={!open} style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 10 }}>
+          <div id="speeddial-actions" role="menu" aria-hidden={!open} style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 10, marginTop: 8 }}>
                       {actions.map((a, idx) => (
                           <button
                               key={a.id}
@@ -115,7 +159,8 @@ export default function SpeedDial({
                                   color: "white",
                                   cursor: "pointer",
                                   boxShadow: "0 6px 16px rgba(0,0,0,0.35)",
-                                  transform: open && !prefersReducedMotion ? 'translateY(0)' : 'translateY(6px)',
+                                  // closed state is slightly above so the open animation looks like a downward drop
+                                  transform: open && !prefersReducedMotion ? 'translateY(0)' : 'translateY(-6px)',
                                   opacity: open ? 1 : 0,
                                   transition: prefersReducedMotion ? 'none' : 'opacity 180ms ease, transform 180ms ease',
                               }}
@@ -127,54 +172,7 @@ export default function SpeedDial({
               </div>
         )}
 
-        {/* Floating info bubble */}
-        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                          <button
-                              id="speeddial-toggle"
-                              aria-haspopup="menu"
-                              aria-controls="speeddial-actions"
-                              aria-expanded={open}
-                              tabIndex={0}
-                              onKeyDown={(e) => {
-                                  if (e.key === 'Enter' || e.key === ' ') {
-                                      e.preventDefault();
-                                      setOpen((s) => !s);
-                                      if (!open) setFocusedIndex(0);
-                                  }
-                                  if (e.key === 'Escape') setOpen(false);
-                                  if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && open) {
-                                      e.preventDefault();
-                                      const dir = e.key === 'ArrowDown' ? 1 : -1;
-                                      setFocusedIndex((i) => (i + dir + actions.length) % actions.length);
-                                  }
-                              } }
-                              onClick={() => {
-                                  setOpen((s) => !s);
-                                  if (!open) setFocusedIndex(0);
-                              } }
-                              aria-label={open ? "Đóng menu hành động" : "Mở menu hành động"}
-                              style={{
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  width: 56,
-                                  height: 56,
-                                  borderRadius: 28,
-                                  background: "linear-gradient(135deg,#00bfa5,#1de9b6)",
-                                  color: "white",
-                                  fontSize: 22,
-                                  fontWeight: 800,
-                                  boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
-                                  border: "2px solid rgba(255,255,255,0.14)",
-                                  cursor: "pointer",
-                              }}
-                          >
-                              {open ? "×" : "☰"}
-                          </button>
-
-                          {/* hidden file input to open the file picker */}
-                              <input ref={inputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleFileChange} />
-                            </div>
+    
       </div>
     </div>
   );
