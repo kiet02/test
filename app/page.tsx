@@ -119,7 +119,6 @@ export default function BezierCurveEditor() {
         );
       }
     } catch {}
-
     if (dragging && dragging.type === "top") {
       const point = points.find((p) => p.id === dragging.pointId);
       if (point) {
@@ -161,6 +160,10 @@ export default function BezierCurveEditor() {
     }
 
     setDragging(null);
+  };
+
+  const handleMouseUp = (e: React.MouseEvent<HTMLDivElement>) => {
+    handlePointerUp(e as unknown as PointerEvent);
   };
   const addNewCurve = () => {
     const newPoint: Point = {
@@ -344,8 +347,8 @@ export default function BezierCurveEditor() {
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
       onPointerLeave={handlePointerUp}
-      onMouseUp={handlePointerUp}
-      onMouseLeave={handlePointerUp}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
     >
       <svg
         style={{
