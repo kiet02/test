@@ -1,19 +1,13 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import CurveCanvas from "./components/CurveCanvas";
+import PointHandles from "./components/PointHandles";
+import type { Point } from "./components/types";
+import { getBezierLength } from "./components/bezierUtils";
+import SpeedDial from "./components/SpeedDial";
 
-interface Point {
-  id: number;
-  x: number;
-  y: number;
-  leftX: number;
-  leftY: number;
-  rightX: number;
-  rightY: number;
-  topX: number;
-  topY: number;
-  curveId: number;
-}
+
 
 export default function BezierCurveEditor() {
   const [points, setPoints] = useState<Point[]>([
@@ -50,23 +44,32 @@ export default function BezierCurveEditor() {
     pointerId?: number;
   } | null>(null);
 
+  // view transform (pan & zoom)
+  const [scale, setScale] = useState<number>(1);
+  const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [panning, setPanning] = useState<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+  } | null>(null);
+  // active pointers for multi-touch/pinch
+  const pointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const pinchRef = useRef<{
+    active: boolean;
+    initialDistance: number;
+    initialScale: number;
+    midScreenX: number;
+    midScreenY: number;
+    startPan: { x: number; y: number };
+  }>({ active: false, initialDistance: 0, initialScale: 1, midScreenX: 0, midScreenY: 0, startPan: { x: 0, y: 0 } });
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
   const [deleteMode, setDeleteMode] = useState(false);
 
   const tapTimers = useRef<Record<string, number | null>>({});
   const lastTap = useRef<Record<string, number>>({});
   const DOUBLE_TAP_MS = 300;
 
-  const createBezierPath = (point: Point, nextPoint: Point) => {
-    const startX = point.x;
-    const startY = point.y;
-    const cp1X = point.x + point.rightX;
-    const cp1Y = point.y + point.rightY;
-    const cp2X = nextPoint.x + nextPoint.leftX;
-    const cp2Y = nextPoint.y + nextPoint.leftY;
-    const endX = nextPoint.x;
-    const endY = nextPoint.y;
-    return `M ${startX} ${startY} C ${cp1X} ${cp1Y}, ${cp2X} ${cp2Y}, ${endX} ${endY}`;
-  };
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -95,10 +98,88 @@ export default function BezierCurveEditor() {
     });
   };
 
+  // Start panning when clicking/touching the background (not on handles)
+  const handleBackgroundPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    // don't start panning when starting to drag a point handle or already interacting
+    if (dragging) return;
+    const targetEl = (e.target as Element) || null;
+    // if the pointerdown occurred on a handle (or inside it), don't pan — let handle logic run
+    if (targetEl?.closest && targetEl.closest("[data-handle]")) return;
+    try {
+      (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+    } catch {}
+
+    // register pointer for multi-touch
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    // if at least two pointers are down we start pinch
+    if (pointersRef.current.size >= 2) {
+      const pts = Array.from(pointersRef.current.values());
+      const dx = pts[1].x - pts[0].x;
+      const dy = pts[1].y - pts[0].y;
+      const initialDistance = Math.hypot(dx, dy) || 1;
+      const midScreenX = (pts[0].x + pts[1].x) / 2;
+      const midScreenY = (pts[0].y + pts[1].y) / 2;
+      pinchRef.current = {
+        active: true,
+        initialDistance,
+        initialScale: scale,
+        midScreenX,
+        midScreenY,
+        startPan: { ...pan },
+      };
+      setPanning(null);
+      return;
+    }
+
+    setPanning({ pointerId: e.pointerId, startX: e.clientX, startY: e.clientY });
+  };
+
+  const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+
   const handlePointerMove = (e: React.PointerEvent) => {
+    // update pointer positions for pinch if tracked
+    if (pointersRef.current.has(e.pointerId)) {
+      pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    }
+
+    // handle active pinch
+    if (pinchRef.current.active) {
+      const pts = Array.from(pointersRef.current.values());
+      if (pts.length < 2) return;
+      const dx = pts[1].x - pts[0].x;
+      const dy = pts[1].y - pts[0].y;
+      const dist = Math.hypot(dx, dy) || 1;
+      const { initialDistance, initialScale, midScreenX, midScreenY, startPan } = pinchRef.current;
+      const newScale = clamp(initialScale * (dist / initialDistance), 0.25, 4);
+
+      // world coords of mid point (before zoom)
+      const worldX = (midScreenX - startPan.x) / initialScale;
+      const worldY = (midScreenY - startPan.y) / initialScale;
+
+      // new pan so the world point stays under the same screen point
+      const newPanX = midScreenX - worldX * newScale;
+      const newPanY = midScreenY - worldY * newScale;
+
+      setScale(newScale);
+      setPan({ x: newPanX, y: newPanY });
+      return;
+    }
+
+    // If panning active and not dragging a point, move the view
+    if (panning && !dragging) {
+      const deltaX = e.clientX - panning.startX;
+      const deltaY = e.clientY - panning.startY;
+      setPan((prev) => ({ x: prev.x + deltaX, y: prev.y + deltaY }));
+      setPanning((prev) => (prev ? { ...prev, startX: e.clientX, startY: e.clientY } : null));
+      return;
+    }
+
     if (!dragging) return;
-    const deltaX = e.clientX - dragging.startX;
-    const deltaY = e.clientY - dragging.startY;
+
+    // convert screen delta into world delta by dividing by scale
+    const deltaX = (e.clientX - dragging.startX) / scale;
+    const deltaY = (e.clientY - dragging.startY) / scale;
     setPoints((prev) =>
       prev.map((p) => {
         if (p.id !== dragging.pointId) return p;
@@ -111,9 +192,7 @@ export default function BezierCurveEditor() {
         return { ...p, topX: p.topX + deltaX, topY: p.topY + deltaY };
       })
     );
-    setDragging((prev) =>
-      prev ? { ...prev, startX: e.clientX, startY: e.clientY } : null
-    );
+    setDragging((prev) => (prev ? { ...prev, startX: e.clientX, startY: e.clientY } : null));
   };
 
   const handlePointerUp = (e?: React.PointerEvent) => {
@@ -136,8 +215,9 @@ export default function BezierCurveEditor() {
               ? { ...p, rightX: deltaX / 3, rightY: deltaY / 3 }
               : p
           );
+          const nextIdBase = points.length > 0 ? Math.max(...points.map((p) => p.id)) : 0;
           const newPoint: Point = {
-            id: Math.max(...points.map((p) => p.id)) + 1,
+            id: nextIdBase + 1,
             x: point.x + point.topX,
             y: point.y + point.topY,
             leftX: (deltaX * 2) / 3 - deltaX,
@@ -152,12 +232,25 @@ export default function BezierCurveEditor() {
         }
       }
     }
+    // remove pointer from active pointers (for pinch tracking)
+    if (e?.pointerId != null) {
+      pointersRef.current.delete(e.pointerId);
+    }
+
+    // stop pinch when fewer than 2 pointers remain
+    if (pinchRef.current.active && pointersRef.current.size < 2) {
+      pinchRef.current.active = false;
+    }
+
+    // release panning if it was active and pointer matched
+    if (panning && (!e || e.pointerId === panning.pointerId)) setPanning(null);
     setDragging(null);
   };
 
   const addNewCurve = () => {
+    const nextIdBase = points.length > 0 ? Math.max(...points.map((p) => p.id)) : 0;
     const newPoint: Point = {
-      id: Math.max(...points.map((p) => p.id)) + 1,
+      id: nextIdBase + 1,
       x: window.innerWidth / 2,
       y: window.innerHeight / 2,
       leftX: -80,
@@ -272,37 +365,35 @@ export default function BezierCurveEditor() {
     }, DOUBLE_TAP_MS);
   };
 
+  // wheel-to-zoom around cursor when ctrl/cmd pressed
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+      // allow wheel-to-zoom on the canvas (trackpad pinch / wheel will zoom)
+    e.preventDefault();
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const cursorX = e.clientX - rect.left;
+    const cursorY = e.clientY - rect.top;
+    const curScale = scale;
+    // smooth exponential zoom
+    const zoomFactor = Math.exp(-e.deltaY * 0.0015);
+    const newScale = clamp(curScale * zoomFactor, 0.25, 4);
+
+    // keep point under cursor stable
+    const worldX = (cursorX - pan.x) / curScale;
+    const worldY = (cursorY - pan.y) / curScale;
+    const newPanX = cursorX - worldX * newScale;
+    const newPanY = cursorY - worldY * newScale;
+
+    setScale(newScale);
+    setPan({ x: newPanX, y: newPanY });
+  };
+
   const curves = points.reduce((acc, point) => {
     if (!acc[point.curveId]) acc[point.curveId] = [];
     acc[point.curveId].push(point);
     return acc;
   }, {} as Record<number, Point[]>);
-  const getBezierLength = (
-    p0: { x: number; y: number },
-    p1: { x: number; y: number },
-    p2: { x: number; y: number },
-    p3: { x: number; y: number },
-    segments = 100
-  ) => {
-    let length = 0;
-    let prev = p0;
-    for (let i = 1; i <= segments; i++) {
-      const t = i / segments;
-      const x =
-        (1 - t) ** 3 * p0.x +
-        3 * (1 - t) ** 2 * t * p1.x +
-        3 * (1 - t) * t ** 2 * p2.x +
-        t ** 3 * p3.x;
-      const y =
-        (1 - t) ** 3 * p0.y +
-        3 * (1 - t) ** 2 * t * p1.y +
-        3 * (1 - t) * t ** 2 * p2.y +
-        t ** 3 * p3.y;
-      length += Math.hypot(x - prev.x, y - prev.y);
-      prev = { x, y };
-    }
-    return length;
-  };
+  // getBezierLength is imported from ./components/bezierUtils
 
   // Tính tổng độ dài các đường Bézier
   const totalLength = Object.values(curves).reduce((sum, curvePoints) => {
@@ -342,190 +433,35 @@ export default function BezierCurveEditor() {
         backgroundPosition: "center",
         position: "relative",
         overflow: "hidden",
-        cursor: dragging ? "grabbing" : "default",
+        cursor: dragging || panning ? "grabbing" : scale > 1 ? "grab" : "default",
         userSelect: "none",
         touchAction: "none",
       }}
+      ref={containerRef}
+      onPointerDown={handleBackgroundPointerDown}
+      onWheel={handleWheel}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
       onPointerLeave={handlePointerUp}
     >
-      <svg
+      <div
         style={{
           position: "absolute",
-          top: 0,
-          left: 0,
-          width: "100%",
-          height: "100%",
+          inset: 0,
+          transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`,
+          transformOrigin: "0 0",
         }}
+        onPointerDown={handleBackgroundPointerDown}
       >
-        {Object.entries(curves).map(([curveId, curvePoints]) =>
-          curvePoints.map((point, index) => {
-            const nextPoint = curvePoints[index + 1];
-            const isLast = index === curvePoints.length - 1;
-            const color =
-              curveColors[(parseInt(curveId) - 1) % curveColors.length];
-            if (nextPoint) {
-              length = getBezierLength(
-                { x: point.x, y: point.y },
-                { x: point.x + point.rightX, y: point.y + point.rightY },
-                {
-                  x: nextPoint.x + nextPoint.leftX,
-                  y: nextPoint.y + nextPoint.leftY,
-                },
-                { x: nextPoint.x, y: nextPoint.y }
-              );
-            }
-
-            return (
-              <g key={point.id}>
-                {/* Control lines */}
-                <line
-                  x1={point.x}
-                  y1={point.y}
-                  x2={point.x + point.leftX}
-                  y2={point.y + point.leftY}
-                  stroke="rgba(255,255,0,0.4)"
-                  strokeWidth={1.5}
-                  strokeDasharray="4,4"
-                />
-                <line
-                  x1={point.x}
-                  y1={point.y}
-                  x2={point.x + point.rightX}
-                  y2={point.y + point.rightY}
-                  stroke="rgba(255,0,255,0.4)"
-                  strokeWidth={1.5}
-                  strokeDasharray="4,4"
-                />
-                {isLast && (
-                  <line
-                    x1={point.x}
-                    y1={point.y}
-                    x2={point.x + point.topX}
-                    y2={point.y + point.topY}
-                    stroke="rgba(255,165,0,0.6)"
-                    strokeWidth={2}
-                    strokeDasharray="5,5"
-                  />
-                )}
-
-                {/* Bézier path */}
-                {nextPoint && (
-                  <>
-                    <path
-                      id={`curve-${point.id}-${nextPoint.id}`}
-                      d={createBezierPath(point, nextPoint)}
-                      stroke={color}
-                      strokeWidth={4}
-                      fill="none"
-                      strokeLinecap="round"
-                      style={{ pointerEvents: "none" }}
-                    />
-                    <text fill="white" fontSize={14} fontWeight="bold">
-                      <textPath
-                        href={`#curve-${point.id}-${nextPoint.id}`}
-                        startOffset="50%"
-                        textAnchor="middle"
-                      >
-                        {getBezierLength(
-                          { x: point.x, y: point.y },
-                          {
-                            x: point.x + point.rightX,
-                            y: point.y + point.rightY,
-                          },
-                          {
-                            x: nextPoint.x + nextPoint.leftX,
-                            y: nextPoint.y + nextPoint.leftY,
-                          },
-                          { x: nextPoint.x, y: nextPoint.y }
-                        ).toFixed(2)}{" "}
-                        px
-                      </textPath>
-                    </text>
-                  </>
-                )}
-              </g>
-            );
-          })
-        )}
-      </svg>
-      {points.map((point) => {
-        const curvePoints = points.filter((p) => p.curveId === point.curveId);
-        const isLast = curvePoints.indexOf(point) === curvePoints.length - 1;
-        return (
-          <React.Fragment key={point.id}>
-            <div
-              style={{
-                position: "absolute",
-                left: point.x + point.leftX - 6,
-                top: point.y + point.leftY - 6,
-                width: 12,
-                height: 12,
-                backgroundColor: "#ffeb3b",
-                borderRadius: "50%",
-                cursor: "grab",
-                border: "2px solid rgba(255,255,255,0.8)",
-                boxShadow: "0 0 8px rgba(255,235,59,0.6)",
-                touchAction: "none",
-              }}
-              onPointerDown={(e) => handlePointerDown(e, point.id, "left")}
-            />
-            <div
-              style={{
-                position: "absolute",
-                left: point.x + point.rightX - 6,
-                top: point.y + point.rightY - 6,
-                width: 12,
-                height: 12,
-                backgroundColor: "#e91e63",
-                borderRadius: "50%",
-                cursor: "grab",
-                border: "2px solid rgba(255,255,255,0.8)",
-                boxShadow: "0 0 8px rgba(233,30,99,0.6)",
-                touchAction: "none",
-              }}
-              onPointerDown={(e) => handlePointerDown(e, point.id, "right")}
-            />
-            {isLast && (
-              <div
-                style={{
-                  position: "absolute",
-                  left: point.x + point.topX - 6,
-                  top: point.y + point.topY - 6,
-                  width: 12,
-                  height: 12,
-                  backgroundColor: "#ff9800",
-                  borderRadius: 2,
-                  cursor: "grab",
-                  border: "2px solid rgba(255,255,255,0.9)",
-                  boxShadow: "0 0 10px rgba(255,152,0,0.7)",
-                  touchAction: "none",
-                }}
-                onPointerDown={(e) => handlePointerDown(e, point.id, "top")}
-              />
-            )}
-            <div
-              style={{
-                position: "absolute",
-                left: point.x - 10,
-                top: point.y - 10,
-                width: 20,
-                height: 20,
-                backgroundColor: isLast ? "#ff3333" : "#00ff00",
-                borderRadius: "50%",
-                border: "3px solid white",
-                cursor: "grab",
-                boxShadow: "0 0 12px rgba(255,255,255,0.6)",
-                transition: "transform 0.1s",
-                touchAction: "none",
-              }}
-              onPointerDown={(e) => handlePointerDown(e, point.id, "main")}
-            />
-          </React.Fragment>
-        );
-      })}
+        <CurveCanvas
+        curves={curves}
+        curveColors={curveColors}
+          onSegmentPointerUp={handleSegmentPointerUp}
+          onSegmentDoubleClick={(startId, endId) => straightenSegment(startId, endId)}
+      />
+        <PointHandles points={points} onPointerDown={handlePointerDown} />
+      </div>
       <div
         style={{
           position: "absolute",
@@ -537,99 +473,16 @@ export default function BezierCurveEditor() {
           alignItems: "flex-end",
         }}
       >
-        <div
-          style={{
-            color: "white",
-            backgroundColor: "rgba(0,0,0,0.85)",
-            padding: "12px 20px",
-            borderRadius: 8,
-            fontFamily: "monospace",
-            fontSize: 14,
-            fontWeight: "bold",
-          }}
-        >
-          <div>Số đường: {Object.keys(curves).length}</div>
-          <div>Tổng điểm: {points.length}</div>
-          <div>Độ dài đường: {totalLength.toFixed(2)}</div>
-          {deleteMode && (
-            <div style={{ color: "#ff5252", marginTop: 8 }}>
-              🗑️ Chế độ xóa: BẬT
-            </div>
-          )}
-        </div>
-        <button
-          onClick={() => setDeleteMode(!deleteMode)}
-          style={{
-            padding: "12px 24px",
-            backgroundColor: deleteMode ? "#ff5252" : "#757575",
-            color: "white",
-            border: "none",
-            borderRadius: 8,
-            cursor: "pointer",
-            fontSize: 14,
-            fontWeight: "bold",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
-            transition: "all 0.2s",
-          }}
-        >
-          {deleteMode ? "🗑️ Tắt chế độ xóa" : "✂️ Bật chế độ xóa"}
-        </button>
-        <button
-          onClick={addNewCurve}
-          style={{
-            padding: "12px 24px",
-            backgroundColor: "#4CAF50",
-            color: "white",
-            border: "none",
-            borderRadius: 8,
-            cursor: "pointer",
-            fontSize: 14,
-            fontWeight: "bold",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
-            transition: "all 0.2s",
-          }}
-        >
-          ➕ Tạo đường mới
-        </button>
-        <button
-          onClick={resetCanvas}
-          style={{
-            padding: "10px 20px",
-            backgroundColor: "#f44336",
-            color: "white",
-            border: "none",
-            borderRadius: 8,
-            cursor: "pointer",
-            fontSize: 14,
-            fontWeight: "bold",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
-            transition: "all 0.2s",
-          }}
-        >
-          🔄 Reset
-        </button>
-        <label
-          style={{
-            padding: "12px 24px",
-            backgroundColor: "#2196F3",
-            color: "white",
-            border: "none",
-            borderRadius: 8,
-            cursor: "pointer",
-            fontSize: 14,
-            fontWeight: "bold",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
-            transition: "all 0.2s",
-          }}
-        >
-          🖼️ Chọn ảnh
-          <input
-            type="file"
-            accept="image/*"
-            style={{ display: "none" }}
-            onChange={handleFileChange}
-          />
-        </label>
+      <SpeedDial
+        deleteMode={deleteMode}
+        setDeleteMode={setDeleteMode}
+        addNewCurve={addNewCurve}
+        resetCanvas={resetCanvas}
+        handleFileChange={handleFileChange}
+        curveCount={Object.keys(curves).length}
+        totalPoints={points.length}
+        totalLength={totalLength}
+      />
       </div>
     </div>
   );
