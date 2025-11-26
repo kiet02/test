@@ -269,7 +269,48 @@ export default function BezierCurveEditor() {
     acc[point.curveId].push(point);
     return acc;
   }, {} as Record<number, Point[]>);
+  const getBezierLength = (
+    p0: { x: number; y: number },
+    p1: { x: number; y: number },
+    p2: { x: number; y: number },
+    p3: { x: number; y: number },
+    segments = 100
+  ) => {
+    let length = 0;
+    let prev = p0;
+    for (let i = 1; i <= segments; i++) {
+      const t = i / segments;
+      const x =
+        (1 - t) ** 3 * p0.x +
+        3 * (1 - t) ** 2 * t * p1.x +
+        3 * (1 - t) * t ** 2 * p2.x +
+        t ** 3 * p3.x;
+      const y =
+        (1 - t) ** 3 * p0.y +
+        3 * (1 - t) ** 2 * t * p1.y +
+        3 * (1 - t) * t ** 2 * p2.y +
+        t ** 3 * p3.y;
+      length += Math.hypot(x - prev.x, y - prev.y);
+      prev = { x, y };
+    }
+    return length;
+  };
 
+  // Tính tổng độ dài các đường Bézier
+  const totalLength = Object.values(curves).reduce((sum, curvePoints) => {
+    let len = 0;
+    curvePoints.forEach((point, i) => {
+      const nextPoint = curvePoints[i + 1];
+      if (!nextPoint) return;
+      len += getBezierLength(
+        { x: point.x, y: point.y },
+        { x: point.x + point.rightX, y: point.y + point.rightY },
+        { x: nextPoint.x + nextPoint.leftX, y: nextPoint.y + nextPoint.leftY },
+        { x: nextPoint.x, y: nextPoint.y }
+      );
+    });
+    return sum + len;
+  }, 0);
   const curveColors = [
     "#00ffff",
     "#ff69b4",
@@ -286,7 +327,9 @@ export default function BezierCurveEditor() {
       style={{
         width: "100vw",
         height: "100vh",
-        backgroundColor: "#1a1a1a",
+        backgroundImage: "url('/background.jpg')",
+        backgroundSize: "cover",
+        backgroundPosition: "center",
         position: "relative",
         overflow: "hidden",
         cursor: dragging ? "grabbing" : "default",
@@ -313,8 +356,21 @@ export default function BezierCurveEditor() {
             const isLast = index === curvePoints.length - 1;
             const color =
               curveColors[(parseInt(curveId) - 1) % curveColors.length];
+            if (nextPoint) {
+              length = getBezierLength(
+                { x: point.x, y: point.y },
+                { x: point.x + point.rightX, y: point.y + point.rightY },
+                {
+                  x: nextPoint.x + nextPoint.leftX,
+                  y: nextPoint.y + nextPoint.leftY,
+                },
+                { x: nextPoint.x, y: nextPoint.y }
+              );
+            }
+
             return (
               <g key={point.id}>
+                {/* Control lines */}
                 <line
                   x1={point.x}
                   y1={point.y}
@@ -344,22 +400,12 @@ export default function BezierCurveEditor() {
                     strokeDasharray="5,5"
                   />
                 )}
+
+                {/* Bézier path */}
                 {nextPoint && (
                   <>
                     <path
-                      d={createBezierPath(point, nextPoint)}
-                      stroke="transparent"
-                      strokeWidth={30}
-                      fill="none"
-                      style={{
-                        pointerEvents: "auto",
-                        cursor: deleteMode ? "pointer" : "pointer",
-                      }}
-                      onPointerUp={(e) =>
-                        handleSegmentPointerUp(e, point.id, nextPoint.id)
-                      }
-                    />
-                    <path
+                      id={`curve-${point.id}-${nextPoint.id}`}
                       d={createBezierPath(point, nextPoint)}
                       stroke={color}
                       strokeWidth={4}
@@ -367,6 +413,27 @@ export default function BezierCurveEditor() {
                       strokeLinecap="round"
                       style={{ pointerEvents: "none" }}
                     />
+                    <text fill="white" fontSize={14} fontWeight="bold">
+                      <textPath
+                        href={`#curve-${point.id}-${nextPoint.id}`}
+                        startOffset="50%"
+                        textAnchor="middle"
+                      >
+                        {getBezierLength(
+                          { x: point.x, y: point.y },
+                          {
+                            x: point.x + point.rightX,
+                            y: point.y + point.rightY,
+                          },
+                          {
+                            x: nextPoint.x + nextPoint.leftX,
+                            y: nextPoint.y + nextPoint.leftY,
+                          },
+                          { x: nextPoint.x, y: nextPoint.y }
+                        ).toFixed(2)}{" "}
+                        px
+                      </textPath>
+                    </text>
                   </>
                 )}
               </g>
@@ -473,6 +540,7 @@ export default function BezierCurveEditor() {
         >
           <div>Số đường: {Object.keys(curves).length}</div>
           <div>Tổng điểm: {points.length}</div>
+          <div>Độ dài đường: {totalLength.toFixed(2)}</div>
           {deleteMode && (
             <div style={{ color: "#ff5252", marginTop: 8 }}>
               🗑️ Chế độ xóa: BẬT
