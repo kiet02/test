@@ -4,11 +4,11 @@ import React, { useEffect, useRef, useState } from "react";
 import CurveCanvas from "./components/CurveCanvas";
 import PointHandles from "./components/PointHandles";
 import type { Point } from "./components/types";
-import { getBezierLength } from "./components/bezierUtils";
 import SpeedDial from "./components/SpeedDial";
-
-
-
+import {
+  calculateCurveArea,
+  calculateRevolvedVolume,
+} from "./components/bezierUtils";
 export default function BezierCurveEditor() {
   const [points, setPoints] = useState<Point[]>([
     {
@@ -30,7 +30,7 @@ export default function BezierCurveEditor() {
       prev.map((p) => ({
         ...p,
         x: window.innerWidth,
-        y: window.innerHeight ,
+        y: window.innerHeight,
       }))
     );
   }, []);
@@ -61,7 +61,14 @@ export default function BezierCurveEditor() {
     midScreenX: number;
     midScreenY: number;
     startPan: { x: number; y: number };
-  }>({ active: false, initialDistance: 0, initialScale: 1, midScreenX: 0, midScreenY: 0, startPan: { x: 0, y: 0 } });
+  }>({
+    active: false,
+    initialDistance: 0,
+    initialScale: 1,
+    midScreenX: 0,
+    midScreenY: 0,
+    startPan: { x: 0, y: 0 },
+  });
   const containerRef = useRef<HTMLDivElement | null>(null);
   const _initialCentered = useRef(false);
 
@@ -72,8 +79,10 @@ export default function BezierCurveEditor() {
 
     const innerFactor = 2; // inner element is 200% × 200%
     const rect = el.getBoundingClientRect();
-    const desiredPanX = (rect.width - rect.width * innerFactor * scale) / (2 * scale);
-    const desiredPanY = (rect.height - rect.height * innerFactor * scale) / (2 * scale);
+    const desiredPanX =
+      (rect.width - rect.width * innerFactor * scale) / (2 * scale);
+    const desiredPanY =
+      (rect.height - rect.height * innerFactor * scale) / (2 * scale);
 
     setPan({ x: desiredPanX, y: desiredPanY });
     _initialCentered.current = true;
@@ -114,12 +123,19 @@ export default function BezierCurveEditor() {
   };
 
   // Start panning when clicking/touching the background (not on handles)
-  const handleBackgroundPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+  const handleBackgroundPointerDown = (
+    e: React.PointerEvent<HTMLDivElement>
+  ) => {
     // don't start panning when starting to drag a point handle or already interacting
     if (dragging) return;
     const targetEl = (e.target as Element) || null;
     // if the pointerdown occurred on a handle (or inside it) or UI, don't pan — let the UI/handle logic run
-    if (targetEl?.closest && (targetEl.closest("[data-handle]") || targetEl.closest("[data-ui-speeddial]"))) return;
+    if (
+      targetEl?.closest &&
+      (targetEl.closest("[data-handle]") ||
+        targetEl.closest("[data-ui-speeddial]"))
+    )
+      return;
     try {
       (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
     } catch {}
@@ -147,10 +163,15 @@ export default function BezierCurveEditor() {
       return;
     }
 
-    setPanning({ pointerId: e.pointerId, startX: e.clientX, startY: e.clientY });
+    setPanning({
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+    });
   };
 
-  const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+  const clamp = (v: number, a: number, b: number) =>
+    Math.max(a, Math.min(b, v));
 
   const handlePointerMove = (e: React.PointerEvent) => {
     // update pointer positions for pinch if tracked
@@ -165,7 +186,13 @@ export default function BezierCurveEditor() {
       const dx = pts[1].x - pts[0].x;
       const dy = pts[1].y - pts[0].y;
       const dist = Math.hypot(dx, dy) || 1;
-      const { initialDistance, initialScale, midScreenX, midScreenY, startPan } = pinchRef.current;
+      const {
+        initialDistance,
+        initialScale,
+        midScreenX,
+        midScreenY,
+        startPan,
+      } = pinchRef.current;
       const newScale = clamp(initialScale * (dist / initialDistance), 0.25, 4);
 
       // world coords of mid point (before zoom)
@@ -186,7 +213,9 @@ export default function BezierCurveEditor() {
       const deltaX = e.clientX - panning.startX;
       const deltaY = e.clientY - panning.startY;
       setPan((prev) => ({ x: prev.x + deltaX, y: prev.y + deltaY }));
-      setPanning((prev) => (prev ? { ...prev, startX: e.clientX, startY: e.clientY } : null));
+      setPanning((prev) =>
+        prev ? { ...prev, startX: e.clientX, startY: e.clientY } : null
+      );
       return;
     }
 
@@ -207,7 +236,9 @@ export default function BezierCurveEditor() {
         return { ...p, topX: p.topX + deltaX, topY: p.topY + deltaY };
       })
     );
-    setDragging((prev) => (prev ? { ...prev, startX: e.clientX, startY: e.clientY } : null));
+    setDragging((prev) =>
+      prev ? { ...prev, startX: e.clientX, startY: e.clientY } : null
+    );
   };
 
   const handlePointerUp = (e?: React.PointerEvent) => {
@@ -230,7 +261,8 @@ export default function BezierCurveEditor() {
               ? { ...p, rightX: deltaX / 3, rightY: deltaY / 3 }
               : p
           );
-          const nextIdBase = points.length > 0 ? Math.max(...points.map((p) => p.id)) : 0;
+          const nextIdBase =
+            points.length > 0 ? Math.max(...points.map((p) => p.id)) : 0;
           const newPoint: Point = {
             id: nextIdBase + 1,
             x: point.x + point.topX,
@@ -263,7 +295,8 @@ export default function BezierCurveEditor() {
   };
 
   const addNewCurve = () => {
-    const nextIdBase = points.length > 0 ? Math.max(...points.map((p) => p.id)) : 0;
+    const nextIdBase =
+      points.length > 0 ? Math.max(...points.map((p) => p.id)) : 0;
     const newPoint: Point = {
       id: nextIdBase + 1,
       x: window.innerWidth / 2,
@@ -382,7 +415,7 @@ export default function BezierCurveEditor() {
 
   // wheel-to-zoom around cursor when ctrl/cmd pressed
   const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
-      // allow wheel-to-zoom on the canvas (trackpad pinch / wheel will zoom)
+    // allow wheel-to-zoom on the canvas (trackpad pinch / wheel will zoom)
     e.preventDefault();
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
@@ -408,23 +441,7 @@ export default function BezierCurveEditor() {
     acc[point.curveId].push(point);
     return acc;
   }, {} as Record<number, Point[]>);
-  // getBezierLength is imported from ./components/bezierUtils
 
-  // Tính tổng độ dài các đường Bézier
-  const totalLength = Object.values(curves).reduce((sum, curvePoints) => {
-    let len = 0;
-    curvePoints.forEach((point, i) => {
-      const nextPoint = curvePoints[i + 1];
-      if (!nextPoint) return;
-      len += getBezierLength(
-        { x: point.x, y: point.y },
-        { x: point.x + point.rightX, y: point.y + point.rightY },
-        { x: nextPoint.x + nextPoint.leftX, y: nextPoint.y + nextPoint.leftY },
-        { x: nextPoint.x, y: nextPoint.y }
-      );
-    });
-    return sum + len;
-  }, 0);
   const curveColors = [
     "#00ffff",
     "#ff69b4",
@@ -442,14 +459,15 @@ export default function BezierCurveEditor() {
         width: "100vw",
         height: "100dvh",
         minHeight: "100vh",
-       
+
         backgroundPosition: "center",
         position: "relative",
         overflow: "hidden",
-        cursor: dragging || panning ? "grabbing" : scale > 1 ? "grab" : "default",
+        cursor:
+          dragging || panning ? "grabbing" : scale > 1 ? "grab" : "default",
         paddingBottom: "env(safe-area-inset-bottom, 0px)",
         userSelect: "none",
-        touchAction: "none", 
+        touchAction: "none",
         backgroundColor: "#222",
       }}
       ref={containerRef}
@@ -464,10 +482,12 @@ export default function BezierCurveEditor() {
         style={{
           position: "absolute",
           inset: 0,
-           backgroundImage: backgroundImage
-          ? `url(${backgroundImage})`
-          : undefined,
-        backgroundSize: "cover",
+          backgroundImage: backgroundImage
+            ? `url(${backgroundImage})`
+            : undefined,
+          backgroundSize: "contain",
+          backgroundRepeat: "no-repeat",
+          backgroundPosition: "center",
           transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`,
           transformOrigin: "0 0",
           width: "200%",
@@ -477,11 +497,13 @@ export default function BezierCurveEditor() {
         onPointerDown={handleBackgroundPointerDown}
       >
         <CurveCanvas
-        curves={curves}
-        curveColors={curveColors}
+          curves={curves}
+          curveColors={curveColors}
           onSegmentPointerUp={handleSegmentPointerUp}
-          onSegmentDoubleClick={(startId, endId) => straightenSegment(startId, endId)}
-      />
+          onSegmentDoubleClick={(startId, endId) =>
+            straightenSegment(startId, endId)
+          }
+        />
         <PointHandles points={points} onPointerDown={handlePointerDown} />
       </div>
       <div
@@ -494,14 +516,66 @@ export default function BezierCurveEditor() {
           gap: 10,
           alignItems: "flex-end",
         }}
-      >     
-      <SpeedDial
-        deleteMode={deleteMode}
-        setDeleteMode={setDeleteMode}
-        addNewCurve={addNewCurve}
-        resetCanvas={resetCanvas}
-        handleFileChange={handleFileChange}
-      />
+      >
+        <SpeedDial
+          deleteMode={deleteMode}
+          setDeleteMode={setDeleteMode}
+          addNewCurve={addNewCurve}
+          resetCanvas={resetCanvas}
+          handleFileChange={handleFileChange}
+        />
+        {Object.entries(curves).map(([curveId, curvePoints]) => {
+          const sortedPoints = curvePoints.sort((a, b) => a.id - b.id);
+
+          // Tính diện tích (đơn vị là px²)
+          const areaPx = calculateCurveArea(sortedPoints);
+          const volumePx = calculateRevolvedVolume(sortedPoints);
+          // (Tuỳ chọn) Đổi sang đơn vị mét vuông nếu bạn biết tỉ lệ
+          // Ví dụ: 100px = 1 mét thực tế => scale = 0.01
+          // const scale = 0.01;
+          // const realArea = areaPx * scale * scale;
+          return (
+            <div
+              key={curveId}
+              style={{
+                backgroundColor: "rgba(0, 0, 0, 0.7)",
+                color: "white",
+                padding: "12px 16px",
+                borderRadius: "8px",
+                fontSize: "14px",
+                textAlign: "right",
+                border: "1px solid rgba(255, 255, 255, 0.2)",
+                marginTop: "10px",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: "20px",
+                }}
+              >
+                <span>Diện tích:</span>
+                <span style={{ fontWeight: "bold", fontFamily: "monospace" }}>
+                  {areaPx.toLocaleString("en-US", { maximumFractionDigits: 0 })}{" "}
+                  px²
+                </span>
+              </div>
+
+              {/* Hiển thị chu vi (nếu cần) */}
+              <div
+                style={{ fontSize: "0.85em", opacity: 0.7, marginTop: "4px" }}
+              >
+                ({sortedPoints.length - 1} phân đoạn)
+              </div>
+              <span>Thể tích (Tròn xoay):</span>
+              <span style={{ fontWeight: "bold" }}>
+                {volumePx.toLocaleString("en-US", { maximumFractionDigits: 0 })}{" "}
+                px³
+              </span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
